@@ -1,0 +1,310 @@
+<!DOCTYPE html>
+<html lang="es">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0">
+<meta name="theme-color" content="#17181b">
+<title>salva vivas</title>
+<link rel="preconnect" href="https://fonts.googleapis.com">
+<link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+<link href="https://fonts.googleapis.com/css2?family=IBM+Plex+Mono:wght@300;400;500&display=swap" rel="stylesheet">
+<style>
+  :root{
+    --bg:#17181b;
+    --muted:#5f6267;
+    --mid:#8c9096;
+    --bright:#cfd3d9;
+    --orange:#e8763f;
+    --line:#000;
+  }
+
+  *{ box-sizing:border-box; }
+
+  html,body{ height:100%; }
+
+  body{
+    margin:0;
+    background:radial-gradient(120% 120% at 50% 42%, #1e1f23 0%, #161719 72%);
+    color:var(--mid);
+    font-family:"IBM Plex Mono", ui-monospace, SFMono-Regular, Menlo, Consolas, monospace;
+    font-weight:400;
+    overflow:hidden;
+    -webkit-font-smoothing:antialiased;
+    text-rendering:geometricPrecision;
+  }
+
+  /* subtle CRT scanlines */
+  .scanlines{
+    position:fixed; inset:0; z-index:61; pointer-events:none;
+    background:repeating-linear-gradient(
+      to bottom,
+      rgba(255,255,255,.025) 0 1px,
+      transparent 1px 3px);
+    mix-blend-mode:overlay;
+    opacity:.6;
+  }
+
+  /* ---------- stage ---------- */
+  .stage{
+    position:fixed; inset:0; z-index:10;
+    display:grid; place-items:center;
+  }
+
+  /* ---------- full-screen ascii field ---------- */
+  .field{
+    position:absolute; inset:0;
+    display:flex; flex-direction:column; justify-content:center;
+    overflow:hidden;
+    font-size:clamp(11px, 1.1vw, 16px);
+    line-height:1.6;
+    user-select:none;
+  }
+
+  .row{
+    position:relative;
+    display:grid;
+    height:1.6em;
+    overflow:hidden;
+  }
+
+  /* black band, full character height, ~20 chars wide, random position */
+  .bar{
+    position:absolute;
+    top:0; bottom:0;
+    background:var(--line);
+    z-index:0;
+  }
+
+  .cell{
+    position:relative;
+    z-index:1;
+    text-align:center;
+    line-height:1.6;
+    color:var(--mid);
+    transition:color .15s ease;
+  }
+  .cell.orange{ color:var(--orange); }
+  .cell.bright{ color:var(--bright); }
+
+  /* the slash spins only on hover */
+  .cell.spin{ cursor:crosshair; will-change:contents; }
+  .cell.spin:hover{
+    color:#fff;
+    text-shadow:0 0 10px rgba(232,118,63,.7);
+  }
+
+  /* ---------- centered name ---------- */
+  .center{
+    position:relative;
+    z-index:20;
+    text-align:center;
+  }
+  .name-wrap{
+    position:relative;
+    display:inline-block;
+    padding:.12em .9em;
+  }
+  .name-wrap .name-bar{
+    position:absolute;
+    inset:0;
+    background:var(--line);
+    z-index:0;
+  }
+  .name{
+    position:relative;
+    z-index:1;
+    margin:0;
+    font-size:clamp(14px, 1.5vw, 20px);
+    font-weight:400;
+    line-height:1.2;
+    color:var(--bright);
+    white-space:nowrap;
+  }
+  .name .vivas{ color:var(--orange); }
+
+  .cursor{
+    display:inline-block;
+    width:.6ch;
+    height:1.05em;
+    margin-left:.1em;
+    transform:translateY(.12em);
+    background:var(--bright);
+    animation:blink 1.05s steps(1,end) infinite;
+  }
+
+  @keyframes blink{
+    0%,50%{ opacity:1; }
+    50.01%,100%{ opacity:0; }
+  }
+
+  @media (prefers-reduced-motion: reduce){
+    .cursor{ animation:none; opacity:1; }
+  }
+</style>
+</head>
+<body>
+  <main class="stage">
+    <div id="field" class="field" aria-hidden="true"></div>
+
+    <div class="center">
+      <div class="name-wrap">
+        <span class="name-bar" aria-hidden="true"></span>
+        <h1 class="name">salva <span class="vivas">vivas</span><span class="cursor" aria-hidden="true"></span></h1>
+      </div>
+    </div>
+  </main>
+
+  <div class="scanlines" aria-hidden="true"></div>
+
+<script>
+(function () {
+  const field = document.getElementById("field");
+  const FRAMES = ["/", "-", "\\", "|"];
+  const BAR_CHARS = 20;
+  const RADIUS = 5;          // influence radius, in characters
+  const BASE_INTERVAL = 68;  // ms per frame for the closest character
+
+  let grid = [];             // grid[row][col] -> cell element
+  let cellW = 1;
+  let cellH = 1;
+
+  const active = new Map();  // cell -> { interval, phase }
+  let last = 0;
+  let rafId = null;
+
+  function makeCell() {
+    const cell = document.createElement("span");
+    cell.className = "cell spin";
+    cell.textContent = FRAMES[0];
+
+    const r = Math.random();
+    if (r < 0.07) cell.classList.add("orange");
+    else if (r < 0.16) cell.classList.add("bright");
+
+    return cell;
+  }
+
+  function buildRow(cols) {
+    const row = document.createElement("div");
+    row.className = "row";
+    row.style.gridTemplateColumns = "repeat(" + cols + ", 1fr)";
+
+    if (cols > BAR_CHARS + 2 && Math.random() < 0.28) {
+      const maxStart = cols - BAR_CHARS;
+      const start = Math.floor(Math.random() * (maxStart + 1));
+      const bar = document.createElement("div");
+      bar.className = "bar";
+      bar.style.left = (start / cols * 100) + "%";
+      bar.style.width = (BAR_CHARS / cols * 100) + "%";
+      row.appendChild(bar);
+    }
+
+    const cellRow = [];
+    for (let c = 0; c < cols; c++) {
+      const cell = makeCell();
+      cellRow.push(cell);
+      row.appendChild(cell);
+    }
+    grid.push(cellRow);
+    return row;
+  }
+
+  function clearActive() {
+    for (const cell of active.keys()) cell.textContent = FRAMES[0];
+    active.clear();
+  }
+
+  function render() {
+    field.innerHTML = "";
+    clearActive();
+    grid = [];
+
+    const cs = getComputedStyle(field);
+    const fs = parseFloat(cs.fontSize) || 14;
+    const lh = parseFloat(cs.lineHeight) || fs * 1.6;
+    const cols = Math.max(8, Math.round(field.clientWidth / (fs * 1.35)));
+    const rows = Math.max(6, Math.round(field.clientHeight / lh));
+
+    cellW = field.clientWidth / cols;
+    cellH = lh;
+
+    const frag = document.createDocumentFragment();
+    for (let r = 0; r < rows; r++) frag.appendChild(buildRow(cols));
+    field.appendChild(frag);
+  }
+
+  // closest = fastest; slows down with distance until the edge of the radius
+  function speedFor(distance) {
+    return BASE_INTERVAL + Math.pow(distance, 1.5) * 34;
+  }
+
+  function updateFromPointer(px, py) {
+    const col = Math.floor(px / cellW);
+    const row = Math.floor(py / cellH);
+    const next = new Set();
+
+    for (let dr = -RADIUS; dr <= RADIUS; dr++) {
+      const rr = row + dr;
+      if (rr < 0 || rr >= grid.length) continue;
+
+      for (let dc = -RADIUS; dc <= RADIUS; dc++) {
+        const cc = col + dc;
+        if (cc < 0 || cc >= grid[rr].length) continue;
+
+        const dist = Math.sqrt(dc * dc + dr * dr);
+        if (dist > RADIUS) continue;
+
+        const cell = grid[rr][cc];
+        next.add(cell);
+
+        let st = active.get(cell);
+        if (!st) {
+          st = { interval: speedFor(dist), phase: 0 };
+          active.set(cell, st);
+        } else {
+          st.interval = speedFor(dist);
+        }
+      }
+    }
+
+    for (const cell of active.keys()) {
+      if (!next.has(cell)) {
+        if (cell.textContent !== FRAMES[0]) cell.textContent = FRAMES[0];
+        active.delete(cell);
+      }
+    }
+  }
+
+  function tick(now) {
+    const dt = last ? now - last : 0;
+    last = now;
+
+    for (const [cell, st] of active) {
+      st.phase += dt / st.interval;
+      const frame = FRAMES[Math.floor(st.phase) % FRAMES.length];
+      if (cell.textContent !== frame) cell.textContent = frame;
+    }
+
+    rafId = requestAnimationFrame(tick);
+  }
+
+  field.addEventListener("pointermove", function (e) {
+    const rect = field.getBoundingClientRect();
+    updateFromPointer(e.clientX - rect.left, e.clientY - rect.top);
+  });
+
+  field.addEventListener("pointerleave", clearActive);
+
+  /* ---------- boot + responsive ---------- */
+  let resizeRaf = null;
+  render();
+  last = performance.now();
+  rafId = requestAnimationFrame(tick);
+  window.addEventListener("resize", function () {
+    if (resizeRaf) cancelAnimationFrame(resizeRaf);
+    resizeRaf = requestAnimationFrame(render);
+  });
+})();
+</script>
+</body>
+</html>
