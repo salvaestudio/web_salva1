@@ -270,7 +270,9 @@
 <script>
   const NUM_FRAMES = 200;
   const LOGICAL = 400;
-  const IMAGENES = [];
+  const SPRITE_COLS = 20;
+  const FRAME_SIZE = 300;
+  let SPRITE;
   let currentFrame = 0;
 
   function canvasSize() {
@@ -279,9 +281,7 @@
   }
 
   function preload() {
-    for (let i = 1; i <= NUM_FRAMES; i++) {
-      IMAGENES.push(loadImage("frames/frame" + nf(i, 4) + ".png"));
-    }
+    SPRITE = loadImage("earth_sprite.png");
   }
 
   function setup() {
@@ -387,8 +387,15 @@
     text("π", 200, 370);
     text("π", 200, 48);
 
-    // ---- rotating earth frames ----
-    image(IMAGENES[currentFrame], 0, 0, 400, 400);
+    // ---- rotating earth frames (single sprite sheet) ----
+    const frameCol = currentFrame % SPRITE_COLS;
+    const frameRow = Math.floor(currentFrame / SPRITE_COLS);
+    image(
+      SPRITE,
+      0, 0, 400, 400,
+      frameCol * FRAME_SIZE, frameRow * FRAME_SIZE,
+      FRAME_SIZE, FRAME_SIZE
+    );
     currentFrame = (currentFrame + 1) % NUM_FRAMES;
 
     pop();
