@@ -86,60 +86,25 @@
   .cell.orange{ color:var(--orange); }
   .cell.bright{ color:var(--bright); }
 
-  /* the slash spins only on hover */
+  /* the slash spins only near the cursor */
   .cell.spin{ cursor:crosshair; will-change:contents; }
   .cell.spin:hover{
     color:#fff;
     text-shadow:0 0 10px rgba(232,118,63,.7);
   }
 
-  /* ---------- centered name ---------- */
+  /* ---------- centered p5 sketch ---------- */
   .center{
     position:relative;
     z-index:20;
-    text-align:center;
-  }
-  .name-wrap{
-    position:relative;
-    display:inline-block;
-    padding:.12em .9em;
-  }
-  .name-wrap .name-bar{
-    position:absolute;
-    inset:0;
-    background:var(--line);
-    z-index:0;
-  }
-  .name{
-    position:relative;
-    z-index:1;
-    margin:0;
-    font-size:clamp(14px, 1.5vw, 20px);
-    font-weight:400;
-    line-height:1.2;
-    color:var(--bright);
-    white-space:nowrap;
-  }
-  .name .vivas{ color:var(--orange); }
-
-  .cursor{
-    display:inline-block;
-    width:.6ch;
-    height:1.05em;
-    margin-left:.1em;
-    transform:translateY(.12em);
-    background:var(--bright);
-    animation:blink 1.05s steps(1,end) infinite;
+    display:flex;
+    align-items:center;
+    justify-content:center;
+    pointer-events:none;
   }
 
-  @keyframes blink{
-    0%,50%{ opacity:1; }
-    50.01%,100%{ opacity:0; }
-  }
-
-  @media (prefers-reduced-motion: reduce){
-    .cursor{ animation:none; opacity:1; }
-  }
+  #sketch{ display:block; }
+  #sketch canvas{ display:block; }
 </style>
 </head>
 <body>
@@ -147,30 +112,27 @@
     <div id="field" class="field" aria-hidden="true"></div>
 
     <div class="center">
-      <div class="name-wrap">
-        <span class="name-bar" aria-hidden="true"></span>
-        <h1 class="name">salva <span class="vivas">vivas</span><span class="cursor" aria-hidden="true"></span></h1>
-      </div>
+      <div id="sketch" aria-label="Globo terráqueo de puntos girando"></div>
     </div>
   </main>
 
   <div class="scanlines" aria-hidden="true"></div>
 
+<script src="https://cdn.jsdelivr.net/npm/p5@1.9.4/lib/p5.min.js"></script>
 <script>
 (function () {
   const field = document.getElementById("field");
   const FRAMES = ["/", "-", "\\", "|"];
   const BAR_CHARS = 20;
-  const RADIUS = 5;          // influence radius, in characters
-  const BASE_INTERVAL = 68;  // ms per frame for the closest character
+  const RADIUS = 5;
+  const BASE_INTERVAL = 68;
 
-  let grid = [];             // grid[row][col] -> cell element
+  let grid = [];
   let cellW = 1;
   let cellH = 1;
 
-  const active = new Map();  // cell -> { interval, phase }
+  const active = new Map();
   let last = 0;
-  let rafId = null;
 
   function makeCell() {
     const cell = document.createElement("span");
@@ -233,7 +195,6 @@
     field.appendChild(frag);
   }
 
-  // closest = fastest; slows down with distance until the edge of the radius
   function speedFor(distance) {
     return BASE_INTERVAL + Math.pow(distance, 1.5) * 34;
   }
@@ -285,7 +246,7 @@
       if (cell.textContent !== frame) cell.textContent = frame;
     }
 
-    rafId = requestAnimationFrame(tick);
+    requestAnimationFrame(tick);
   }
 
   field.addEventListener("pointermove", function (e) {
@@ -295,16 +256,143 @@
 
   field.addEventListener("pointerleave", clearActive);
 
-  /* ---------- boot + responsive ---------- */
-  let resizeRaf = null;
   render();
   last = performance.now();
-  rafId = requestAnimationFrame(tick);
+  requestAnimationFrame(tick);
+
+  let resizeRaf = null;
   window.addEventListener("resize", function () {
     if (resizeRaf) cancelAnimationFrame(resizeRaf);
     resizeRaf = requestAnimationFrame(render);
   });
 })();
+</script>
+<script>
+  const NUM_FRAMES = 200;
+  const LOGICAL = 400;
+  const IMAGENES = [];
+  let currentFrame = 0;
+
+  function canvasSize() {
+    const m = Math.min(window.innerWidth, window.innerHeight);
+    return Math.max(240, Math.min(640, Math.round(m * 0.72)));
+  }
+
+  function preload() {
+    for (let i = 1; i <= NUM_FRAMES; i++) {
+      IMAGENES.push(loadImage("frames/frame" + nf(i, 4) + ".png"));
+    }
+  }
+
+  function setup() {
+    const c = createCanvas(canvasSize(), canvasSize());
+    c.parent("sketch");
+    pixelDensity(Math.min(window.devicePixelRatio || 1, 2));
+    frameRate(25);
+    textFont("IBM Plex Mono");
+  }
+
+  function windowResized() {
+    resizeCanvas(canvasSize(), canvasSize());
+  }
+
+  function draw() {
+    clear();
+
+    const s = width / LOGICAL;
+    push();
+    scale(s);
+
+    // ---- rotating line grid (background) ----
+    const w = LOGICAL * 0.10;
+    const h = LOGICAL * 0.10;
+    const off = LOGICAL * 0.05;
+
+    for (let i = 0; i <= 10; i++) {
+      for (let j = 0; j <= 10; j++) {
+        const x = off + w * i;
+        const y = off + h * j;
+        push();
+        translate(x, y);
+        rotate(frameCount * 0.2 + j + i);
+        strokeWeight(0.5);
+        stroke(232, 118, 63, 80);
+        line(-5, -5, 5, 5);
+        pop();
+      }
+    }
+
+    // ---- pulsing rings ----
+    const u = 230 + sin(frameCount * 0.09) * 40;
+    const v = 240 + sin(frameCount * 0.04) * 40;
+
+    fill(232, 118, 63, 12);
+    stroke(232, 118, 63, 55);
+    strokeWeight(0.7);
+    circle(200, 200, v + 114);
+
+    fill(207, 211, 217, 8);
+    stroke(207, 211, 217, 32);
+    strokeWeight(0.7);
+    circle(200, 200, u + 90);
+
+    // ---- orbiting dots ----
+    noStroke();
+    const radius = 130;
+    let ancho = 6;
+
+    for (let c = 1; c <= 12; c++) {
+      const a = radians(frameCount * 0.903 * c);
+      const x = 200 + radius * cos(a);
+      const y = 200 + radius * sin(a);
+      fill(232, 118, 63, 235);
+      circle(x, y, ancho);
+      ancho = random(6, 12);
+    }
+
+    // ---- planet body ----
+    noStroke();
+    fill(32, 34, 40);
+    circle(200, 200, 220);
+
+    noFill();
+    stroke(207, 211, 217, 30);
+    strokeWeight(0.8);
+    circle(200, 200, 220);
+
+    // ---- latin text + pi ----
+    const plain = "Dies vertendo";
+    const accent = "transigimus";
+    const spacer = " ";
+
+    textSize(14);
+    textAlign(LEFT);
+
+    const fullW = textWidth(plain + spacer + accent);
+    const textX = 200 - fullW / 2;
+
+    stroke(15, 16, 20, 220);
+    strokeWeight(2.2);
+
+    fill(207, 211, 217, 210);
+    text(plain, textX, 203);
+
+    fill(232, 118, 63, 240);
+    text(accent, textX + textWidth(plain + spacer), 203);
+
+    textAlign(CENTER);
+    noStroke();
+    fill(232, 118, 63, 235);
+    textSize(30);
+    text("π", 200, 370);
+    text("π", 200, 48);
+
+    // ---- rotating earth frames ----
+    image(IMAGENES[currentFrame], 0, 0, 400, 400);
+    currentFrame = (currentFrame + 1) % NUM_FRAMES;
+
+    pop();
+  }
 </script>
 </body>
 </html>
